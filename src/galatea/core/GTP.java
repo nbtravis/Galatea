@@ -5,7 +5,6 @@ import galatea.board.Color;
 import galatea.board.Point;
 import galatea.engine.GameTree;
 import galatea.engine.MCTS;
-import galatea.engine.MCTSThread;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -19,7 +18,6 @@ public class GTP {
 	private int boardsize = -1, handicap = 0;
 	private double komi = 6.5;
 	private MCTS engine = null;
-	private MCTSThread backgroundTreeSearch = null;
 	private List<String> knownCommands = Arrays.asList(new String[] {
 		"protocol_version", "name", "version", "known_command",
 		"list_commands", "boardsize", "clear_board", "komi", "quit",
@@ -62,7 +60,7 @@ public class GTP {
 			System.out.println(id + 3 + "\n");
 			
 		} else if (command.equals("name")) {
-			System.out.println(id + "Killer\n");
+			System.out.println(id + "Galatea\n");
 			
 		} else if (command.equals("version")) {
 			System.out.println(id + 0.01 + "\n");
@@ -86,23 +84,17 @@ public class GTP {
 			boardsize = Integer.parseInt(arguments.get(0));
 			if (handicap >= 0 && komi > -.5) {
 				engine = new MCTS(new Board(boardsize, handicap, komi));
-				backgroundTreeSearch = new MCTSThread(engine);
-				backgroundTreeSearch.start();
 			}
 			System.out.println(id + "\n");
 			
 		} else if (command.equals("clear_board")) {
 			engine = new MCTS(new Board(boardsize, handicap, komi));
-			backgroundTreeSearch = new MCTSThread(engine);
-			backgroundTreeSearch.start();
 			System.out.println(id + "\n");
 			
 		} else if (command.equals("komi")) {
 			komi = Double.parseDouble(arguments.get(0));
 			if (boardsize >= 0 && handicap >= 0) {
 				engine = new MCTS(new Board(boardsize, handicap, komi));
-				backgroundTreeSearch = new MCTSThread(engine);
-				backgroundTreeSearch.start();
 			}
 			System.out.println(id + "\n");
 			
@@ -111,8 +103,6 @@ public class GTP {
 			handicap = Integer.parseInt(arguments.get(0));
 			if (boardsize >= 0 && komi > -.5) {
 				engine = new MCTS(new Board(boardsize, handicap, komi));
-				backgroundTreeSearch = new MCTSThread(engine);
-				backgroundTreeSearch.start();
 			}
 			List<Point> points = Board.getHandicapPoints(boardsize, handicap);
 			System.out.print(id);
@@ -128,11 +118,6 @@ public class GTP {
 				color = Color.BLACK;
 			Point point = vertexToPoint(arguments.get(1));
 
-			// Stop background thread and wait
-			backgroundTreeSearch.stop();
-			while (backgroundTreeSearch.t != null)
-				Thread.sleep(50);
-			
 			// Update gameTree
 			boolean b = engine.updateGameTree(point, color.opposite());
 			if (!b) {
@@ -148,11 +133,6 @@ public class GTP {
 			else
 				color = Color.BLACK;
 			
-			// Stop background thread and wait
-			backgroundTreeSearch.stop();
-			while (backgroundTreeSearch.t != null)
-				Thread.sleep(50);
-			
 			// Get move from engine, then restart background thread
 			Point point = engine.getMove(color, 19);
 			boolean b = engine.updateGameTree(point, color.opposite());
@@ -160,7 +140,6 @@ public class GTP {
 				engine.board.addStone(color, point, true);
 				engine.gameTree = new GameTree(engine.board, engine.board.turn);
 			}
-			backgroundTreeSearch.start();
 			
 			if (point != null)
 				System.out.println(id + pointToVertex(point) + "\n");

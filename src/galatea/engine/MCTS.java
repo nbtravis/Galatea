@@ -102,8 +102,6 @@ public class MCTS {
 	public static void main(String[] args) throws IOException, InterruptedException {
 		Board board = new Board(9, 0, 6.5);
 		MCTS engine = new MCTS(board);
-		MCTSThread backgroundTreeSearch = new MCTSThread(engine);
-		backgroundTreeSearch.start();
 		BufferedReader r = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {
 			engine.board.printBoard();
@@ -114,11 +112,6 @@ public class MCTS {
 			if (fields.length < 2) p1 = null;
 			else p1 = new Point(Integer.parseInt(fields[0]), Integer.parseInt(fields[1]));
 			
-			// Update game tree (change root to child node), then pause bg thread
-			backgroundTreeSearch.stop();
-			// Make sure background thread has stopped
-			while (backgroundTreeSearch.t != null)
-				Thread.sleep(50);
 			boolean b = engine.updateGameTree(p1, engine.board.turn);
 			if (!b) {
 				engine.board.addStone(engine.board.turn, p1, true);
@@ -134,7 +127,6 @@ public class MCTS {
 				engine.board.addStone(engine.board.turn, p2, true);
 				engine.gameTree = new GameTree(board, board.turn);
 			}
-			backgroundTreeSearch.start();
 			
 			if (p1 == null && p2 == null) break;			
 		}
