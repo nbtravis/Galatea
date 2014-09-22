@@ -25,7 +25,7 @@ public class Chain implements Serializable {
 		points.add(initialPoint);
 	}
 	
-	protected void calculateLiberties(Color[][] board) {
+	public void calculateLiberties(Color[][] board) {
 		int i = 0;
 		Set<Point> seen = new HashSet<Point>();
 		for (Point p: points) {

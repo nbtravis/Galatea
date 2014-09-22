@@ -78,7 +78,7 @@ public class MCTS {
 	private void runSimulation(Node leaf) {
 		Board board = (Board) DeepCopy.copy(leaf.board);
 		// Keep track of all moves made for RAVE updates
-		boolean[][][] moves = new boolean[board.board.length][board.board.length][3];
+		boolean[][][] moves = new boolean[board.size][board.size][3];
 		Point p1, p2;
 		while (true) {
 			p1 = simPolicy.getMove(board);
@@ -105,6 +105,7 @@ public class MCTS {
 		BufferedReader r = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {
 			engine.board.printBoard();
+			engine.board.printLiberties();
 			
 			// Get user move
 			String[] fields = r.readLine().split(" ");
@@ -119,7 +120,7 @@ public class MCTS {
 			}
 			engine.board.printBoard();
 			
-			Point p2 = engine.getMove(engine.board.turn, 30);
+			Point p2 = engine.getMove(engine.board.turn, 1);
 			engine.gameTree.printTree();
 
 			b = engine.updateGameTree(p2, engine.board.turn);

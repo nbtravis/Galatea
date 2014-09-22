@@ -11,6 +11,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
+import galatea.simpolicy.SimFeatures;
+import galatea.tactics.BasicTactics;
+
 public class Board implements Serializable {
 	
 	private static final long serialVersionUID = -4962209626762134868L;
@@ -18,41 +21,46 @@ public class Board implements Serializable {
 	public Color[][] board;
 	public Color turn = Color.WHITE;
 	
-	private int[][] chainMap;
+	public int[][] chainMap;
 	public List<Chain> chains = new ArrayList<Chain>();
 	private int nextChainIndex = 0;
 	
-	private int[][][] zobristHashes;
+	private int[][][] zobristValues;
 	public int zobristHash;
 	
+	public int size;
 	public int handicap;
 	public double komi;
 	
 	private Point koPoint = null;
 	
-	// TODO: do lazy deletes on emptyPoints to speed things up
+	// TODO: Optimize lazy deletes
 	public List<Point> emptyPoints = new ArrayList<Point>();
 	private int lazyDeletes = 0;
 	// The index of the point in the emptyPoints List
-	private int[][] pointToIndex; 
+	private int[][] pointToIndex;
+	
+	private Point recentPoint = null;
+	private int[] simFeatures;
 	
 	// Requires size == 19, 13 or 9 && handicap <= 9 
 	public Board(int size, int handicap, double komi) {
 		board = new Color[size][size];
 		chainMap = new int[size][size];
-		zobristHashes = new int[size][size][3];
+		zobristValues = new int[size][size][3];
 		pointToIndex = new int[size][size];
 		for (int i = 0; i < size; i++) {
 			for (int j = 0; j < size; j++) {
 				board[i][j] = Color.EMPTY;
 				for (int k = 0; k < 3; k++)
-					zobristHashes[i][j][k] = (int) Math.floor(Math.random()*Integer.MAX_VALUE);
+					zobristValues[i][j][k] = (int) Math.floor(Math.random()*Integer.MAX_VALUE);
 				emptyPoints.add(new Point(i, j));
 				pointToIndex[i][j] = emptyPoints.size()-1;
 			}
 		}
 		
 		zobristHash = zobristHash();
+		this.size = size;
 		this.handicap = handicap;
 		this.komi = komi;
 		setHandicap(handicap);
@@ -60,9 +68,9 @@ public class Board implements Serializable {
 	
 	public int zobristHash() {
 		int hash = 0;
-		for (int i = 0; i < board.length; i++) {
-			for (int j = 0; j < board.length; j++) {
-				hash ^= zobristHashes[i][j][board[i][j].ordinal()];
+		for (int i = 0; i < size; i++) {
+			for (int j = 0; j < size; j++) {
+				hash ^= zobristValues[i][j][board[i][j].ordinal()];
 			}
 		}
 		return hash;
@@ -70,8 +78,8 @@ public class Board implements Serializable {
 	
 	public void updateHash(Point p) {
 		int x = p.x, y = p.y;
-		zobristHash ^= zobristHashes[x][y][Color.EMPTY.ordinal()];
-		zobristHash ^= zobristHashes[x][y][board[x][y].ordinal()];
+		zobristHash ^= zobristValues[x][y][Color.EMPTY.ordinal()];
+		zobristHash ^= zobristValues[x][y][board[x][y].ordinal()];
 	}
 	
 	public static List<Point> getHandicapPoints(int size, int handicap) {
@@ -99,7 +107,7 @@ public class Board implements Serializable {
 	}
 	
 	private void setHandicap(int handicap) {
-		List<Point> points = getHandicapPoints(board.length, handicap);
+		List<Point> points = getHandicapPoints(size, handicap);
 		if (handicap == 0)
 			turn = Color.BLACK;
 		for (Point point: points) {
@@ -107,101 +115,12 @@ public class Board implements Serializable {
 		}
 	}
 	
-	// Returns true if by playing a stone at point, you are committing
-	// suicide for that single stone.
-	private boolean isSingleSuicide(Color color, Point point) {
-		int x = point.x; int y = point.y;
-		Color otherColor = color.opposite();
-		
-		// Check to see if there is a liberty
-		if (x > 0 && board[x-1][y] != otherColor)
-			return false;
-		if (x < board.length-1 && board[x+1][y] != otherColor) 
-			return false;
-		if (y > 0 && board[x][y-1] != otherColor)
-			return false;
-		if (y < board.length-1 && board[x][y+1] != otherColor)
-			return false;
-		
-		// Check to see if placing stone will capture group
-		if (x > 0 && board[x-1][y] == otherColor) {
-			Chain chain = chains.get(chainMap[x-1][y]);
-			if (chain.numLiberties < 11)
-				chain.calculateLiberties(board);
-			if (chain.numLiberties == 1)
-				return false;
-		}
-		if (x < board.length-1 && board[x+1][y] == otherColor) {
-			Chain chain = chains.get(chainMap[x+1][y]);
-			if (chain.numLiberties < 11)
-				chain.calculateLiberties(board);
-			if (chain.numLiberties == 1)
-				return false;
-		}
-		if (y > 0 && board[x][y-1] == otherColor) {
-			Chain chain = chains.get(chainMap[x][y-1]);
-			if (chain.numLiberties < 11)
-				chain.calculateLiberties(board);
-			if (chain.numLiberties == 1)
-				return false;
-		}
-		if (y < board.length-1 && board[x][y+1] == otherColor) {
-			Chain chain = chains.get(chainMap[x][y+1]);
-			if (chain.numLiberties < 11)
-				chain.calculateLiberties(board);
-			if (chain.numLiberties == 1)
-				return false;
-		}
-		return true;
-	}
-	
-	private boolean fillsEye(Color color, Point point) {
-		int x = point.x, y = point.y;
-		int chainIndex = -1;
-		if (x > 0) {
-			if (board[x-1][y] != color) 
-				return false;
-			else if (chainIndex != -1 && chainMap[x-1][y] != chainIndex)
-				return false;
-			else {
-				chainIndex = chainMap[x-1][y];
-			}
-		}
-		if (x < board.length-1) {
-			if (board[x+1][y] != color) 
-				return false;
-			else if (chainIndex != -1 && chainMap[x+1][y] != chainIndex)
-				return false;
-			else
-				chainIndex = chainMap[x+1][y];
-		}
-		if (y > 0) {
-			if (board[x][y-1] != color) 
-				return false;
-			else if (chainIndex != -1 && chainMap[x][y-1] != chainIndex)
-				return false;
-			else
-				chainIndex = chainMap[x][y-1];
-		}
-		if (y < board.length-1) {
-			if (board[x][y+1] != color) 
-				return false;
-			else if (chainIndex != -1 && chainMap[x][y+1] != chainIndex)
-				return false;
-			else
-				chainIndex = chainMap[x][y+1];
-		}
-		if (chains.get(chainIndex).numLiberties > 2)
-			return false;
-		return true;
-	}
-	
 	public boolean isLegal(Color color, Point point) {
 		if (koPoint != null && koPoint.x == point.x && koPoint.y == point.y)
 			return false;
-		if (isSingleSuicide(color, point))
+		if (BasicTactics.isSingleSuicide(this, color, point))
 			return false;
-		if (fillsEye(color, point))
+		if (BasicTactics.fillsEye(this, color, point))
 			return false;
 		return true;
 	}
@@ -210,6 +129,12 @@ public class Board implements Serializable {
 	public void addStone(Color color, Point point, boolean rehash) {
 		koPoint = null;
 		turn = color.opposite();
+		recentPoint = point;
+		
+		// Flags to update simFeatures
+		boolean atari = false, selfAtari = false,
+				twoLibs = false, selfTwoLibs = false,
+				chainRemoved = false;
 		
 		// This is for implementing passes
 		if (point == null) return;
@@ -221,29 +146,34 @@ public class Board implements Serializable {
 		if (lazyDeletes > emptyPoints.size()/2)
 			resetEmptyPoints();
 		
-		// If chainRemoved becomes false, we recalculate zobrist hash 
-		boolean chainRemoved = false;
-		
 		List<Integer> chainsAddedTo = new ArrayList<Integer>();
 		if (x > 0 && board[x-1][y] != Color.EMPTY) {
 			int i = updateChain(x-1, y, color, point, chainsAddedTo);
 			if (i >= 0) chainsAddedTo.add(i);
-			else if (i == -2) chainRemoved = true;
+			else if (i == -4) chainRemoved = true;
+			else if (i == -3) twoLibs = true;
+			else if (i == -2) atari = true;
 		}
-		if (x < board.length-1 && board[x+1][y] != Color.EMPTY) {
+		if (x < size-1 && board[x+1][y] != Color.EMPTY) {
 			int i = updateChain(x+1, y, color, point, chainsAddedTo);
 			if (i >= 0) chainsAddedTo.add(i);
-			else if (i == -2) chainRemoved = true;
+			else if (i == -4) chainRemoved = true;
+			else if (i == -3) twoLibs = true;
+			else if (i == -2) atari = true;
 		}
 		if (y > 0 && board[x][y-1] != Color.EMPTY) {
 			int i = updateChain(x, y-1, color, point, chainsAddedTo);
 			if (i >= 0) chainsAddedTo.add(i);
-			else if (i == -2) chainRemoved = true;
+			else if (i == -4) chainRemoved = true;
+			else if (i == -3) twoLibs = true;
+			else if (i == -2) atari = true;
 		}
-		if (y < board.length-1 && board[x][y+1] != Color.EMPTY) {
+		if (y < size-1 && board[x][y+1] != Color.EMPTY) {
 			int i = updateChain(x, y+1, color, point, chainsAddedTo);
 			if (i >= 0) chainsAddedTo.add(i);
-			else if (i == -2) chainRemoved = true;
+			else if (i == -4) chainRemoved = true;
+			else if (i == -3) twoLibs = true;
+			else if (i == -2) atari = true;
 		}
 
 		// New chain
@@ -255,7 +185,9 @@ public class Board implements Serializable {
 			nextChainIndex++;
 		// Merge chains
 		} else {
-			mergeChains(x, y, chainsAddedTo);
+			int i = mergeChains(x, y, chainsAddedTo);
+			if (i == -2) selfTwoLibs = true;
+			else if (i == -1) selfAtari = true;
 		}
 		
 		if (rehash) {
@@ -264,10 +196,8 @@ public class Board implements Serializable {
 		}
 	}
 	
-	// If chain to be updated has same color, it will return the index of the
-	// chain (so that chains can be merged). Otherwise if the chain is of the
-	// opposite color, it will return -1 unless a ko is started, in which case
-	// it will return -2.
+	// -4 = chain removed, -3 = twoLibs, -2 = atari, -1 = chain updated 
+	// already or no chain removed, >= 0 everything else
 	private int updateChain(int x, int y, Color color, Point point, List<Integer> chainsAddedTo) {
 		int chainIndex = chainMap[x][y];
 		
@@ -285,14 +215,18 @@ public class Board implements Serializable {
 		if (board[x][y] != color) {
 			Chain chain = chains.get(chainIndex);
 			chain.numLiberties--;
-			if (chain.numLiberties < 11)
+			if (chain.numLiberties < 3)
 				chain.calculateLiberties(board);
 			if (chain.numLiberties == 0 && chain.points.size() > 1) {
 				removeChain(chainIndex);
-				return -2;
+				return -4;
 			} else if (chain.numLiberties == 0) { // Ko
 				removeChain(chainIndex);
 				koPoint = new Point(x,y);
+				return -4;
+			} else if (chain.numLiberties == 2) {
+				return -3;
+			} else if (chain.numLiberties == 1) {
 				return -2;
 			}
 			return -1;
@@ -314,7 +248,8 @@ public class Board implements Serializable {
 		chains.set(chainIndex, null);
 	}
 	
-	private void mergeChains(int x, int y, List<Integer> chainsAddedTo) {
+	// -2 = self two libs, -1 = self atari, >= 0 anything else 
+	private int mergeChains(int x, int y, List<Integer> chainsAddedTo) {
 		int mainChainIndex = chainsAddedTo.get(0);
 		chainMap[x][y] = mainChainIndex;
 		Chain mainChain = chains.get(mainChainIndex);
@@ -327,9 +262,16 @@ public class Board implements Serializable {
 			}
 			chains.set(chainsAddedTo.get(i), null);
 		}
-		mainChain.calculateLiberties(board);
-		if (mainChain.numLiberties == 0)
-			removeChain(mainChainIndex);
+		if (mainChain.numLiberties < 3) {
+			mainChain.calculateLiberties(board);
+			if (mainChain.numLiberties == 2)
+				return -2;
+			else if (mainChain.numLiberties == 1)
+				return -1;
+			else if (mainChain.numLiberties == 0)
+				removeChain(mainChainIndex);
+		}
+		return 0;
 	}
 	
 	// Updates emptyPoints since we do lazy deletes
@@ -348,8 +290,8 @@ public class Board implements Serializable {
 		}
 		emptyPoints = tmp;
 		
-		for (int i = 0; i < board.length; i++) {
-			for (int j = 0; j < board.length; j++) {
+		for (int i = 0; i < size; i++) {
+			for (int j = 0; j < size; j++) {
 				if (pointToIndex[i][j] < nullCounts.length && pointToIndex[i][j] >= 0)
 					pointToIndex[i][j] -= nullCounts[pointToIndex[i][j]];
 			}
@@ -357,12 +299,11 @@ public class Board implements Serializable {
 	}
 	
 	public void printBoard() {
-		int size = board.length;
 		int offset = (size != 9 ? 4 : 3);
 		List<Integer> specialIndices = Arrays.asList(new Integer[] {size/2, offset-1, size-offset});
 		 
-		for (int i = 0; i < board.length; i++) {
-			for (int j = 0; j < board.length; j++) {
+		for (int i = 0; i < size; i++) {
+			for (int j = 0; j < size; j++) {
 				Color c = board[i][j];
 				char p;
 				if (c == Color.EMPTY && specialIndices.contains(i) && specialIndices.contains(j))
@@ -380,12 +321,11 @@ public class Board implements Serializable {
 	}
 	
 	public void printLiberties() {
-		int size = board.length;
 		int offset = (size != 9 ? 4 : 3);
 		List<Integer> specialIndices = Arrays.asList(new Integer[] {size/2, offset-1, size-offset});
 		 
-		for (int i = 0; i < board.length; i++) {
-			for (int j = 0; j < board.length; j++) {
+		for (int i = 0; i < size; i++) {
+			for (int j = 0; j < size; j++) {
 				Color c = board[i][j];
 				char p;
 				if (c == Color.EMPTY && specialIndices.contains(i) && specialIndices.contains(j))
@@ -403,22 +343,4 @@ public class Board implements Serializable {
 			System.out.println();
 		}
 	}
-	
-	public void printEmptyPoints() {
-		for (int i = 0; i < board.length; i++) {
-			for (int j = 0; j < board.length; j++) {
-				int k;
-				for (k = 0; k < emptyPoints.size(); k++) {
-					if (emptyPoints.get(k) != null && emptyPoints.get(k).equals(new Point(i,j))) {
-						System.out.print("T ");
-						break;
-					}
-				}
-				if (k == emptyPoints.size())
-					System.out.print("F ");
-			}
-			System.out.println();
-		}
-	}
-
 }
