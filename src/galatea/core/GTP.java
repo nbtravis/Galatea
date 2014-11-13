@@ -147,7 +147,7 @@ public class GTP {
 				color = Color.BLACK;
 			
 			engine.gameTree = new GameTree(engine.board, engine.board.turn);
-			Point point = engine.getMove(color, 24);
+			Point point = engine.getMove(color, 26);
 			engine.board.addStone(color, point);
 			
 			if (point != null)
