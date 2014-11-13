@@ -2,10 +2,8 @@ package galatea.board;
 
 import java.io.Serializable;
 
-public class Point implements Serializable {
+public class Point implements Serializable, Comparable<Point> {
 
-	private static final long serialVersionUID = 6311204091549713300L;
-	
 	public int x,y;
 	
 	public Point(int x, int y) {
@@ -19,6 +17,15 @@ public class Point implements Serializable {
 	
 	@Override
 	public int hashCode() {
-		return x^y;
+		return (x + "_" + y).hashCode();
 	}
+
+	@Override
+	public int compareTo(Point o) {
+		if (x - o.x == 0)
+			return y - o.y;
+		return x - o.x;
+	}
+	
+	private static final long serialVersionUID = 6311204091549713300L;
 }

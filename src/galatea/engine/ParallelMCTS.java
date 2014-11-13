@@ -1,7 +1,6 @@
 package galatea.engine;
 
 import galatea.board.Board;
-import galatea.board.Chain;
 import galatea.board.Color;
 import galatea.board.Point;
 import galatea.board.Score;
@@ -15,18 +14,27 @@ import galatea.util.DeepCopy;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
- * Single-threaded MCTS engine.
+ * MCTS engine with multiple threads (does parallelization with a global mutex) 
  */
-public class MCTS {
-	
+public class ParallelMCTS {
+
 	public Board board;
 	public GameTree gameTree;
 	private TreePolicy treePolicy;
 	private SimPolicy simPolicy;
 	
-	public MCTS(Board board) {
+	private Object lock = new Object();
+	
+	// TODO: Heavily test parameters to pass into UCTRAVE
+	public ParallelMCTS(Board board) {
 		treePolicy = new UCTRAVE(81, .5, 400);
 		simPolicy = new MMPolicy();
 		this.board = board;
@@ -43,16 +51,31 @@ public class MCTS {
 		return false;
 	}
 	
-	public Point getMove(Color turn, int seconds) {
-		long start = System.nanoTime();
-		while ((System.nanoTime()-start)/1000000000 < seconds) {
-			// We don't want to be doing too many operations for the while loop 
-			// check, so run x simulations inside for loop
-			for (int i = 0; i < 50; i++) {
-				Node leaf = treePolicy.getNode(gameTree.root);
-				runSimulation(leaf);
-			}
+	public Point getMove(Color turn, final int seconds) throws InterruptedException, ExecutionException {
+		int poolSize = 6;
+		Thread[] threads = new Thread[poolSize];
+		for (int i = 0; i < poolSize; i++) {
+			threads[i] = new Thread(new Runnable() { 
+				public void run() {
+					long start = System.nanoTime();
+					while ((System.nanoTime()-start)/1000000000 < seconds) {
+						// We don't want to be doing too many operations for the while loop 
+						// check, so run x simulations inside for loop
+						for (int i = 0; i < 50; i++) {
+							Node leaf = null;
+							synchronized (lock) {
+								leaf = treePolicy.getNode(gameTree.root);
+							}
+							runSimulation(leaf);
+						}
+					}
+				}
+			});
+			threads[i].start();
 		}
+		for (int i = 0; i < poolSize; i++)
+			threads[i].join();
+
 		Node best = treePolicy.getBest(gameTree.root);
 		if (best == null) {
 			Score score = new Score(gameTree.root.board);
@@ -103,15 +126,20 @@ public class MCTS {
 		}
 		
 		Score score = new Score(board);
-		if (score.whiteScore > score.blackScore)
-			leaf.update(Color.WHITE, board, moves);
-		else
-			leaf.update(Color.BLACK, board, moves);
+		if (score.whiteScore > score.blackScore) {
+			synchronized (lock) {
+				leaf.update(Color.WHITE, board, moves);
+			}
+		} else {
+			synchronized (lock) {
+				leaf.update(Color.BLACK, board, moves);
+			}
+		}
 	}
 	
-	public static void main(String[] args) throws IOException, InterruptedException {
+	public static void main(String[] args) throws IOException, InterruptedException, ExecutionException {
 		Board board = new Board(9, 0, 6.5);
-		MCTS engine = new MCTS(board);
+		ParallelMCTS engine = new ParallelMCTS(board);
 		BufferedReader r = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {
 			engine.board.printBoard();

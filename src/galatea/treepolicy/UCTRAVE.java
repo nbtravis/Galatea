@@ -3,6 +3,13 @@ package galatea.treepolicy;
 import galatea.board.Color;
 import galatea.engine.Node;
 
+/**
+ * Implementation of the UCB+RAVE MCTS tree policy. Parameters passed in have
+ * been deemed from papers and not heavily tested (TODO).
+ * 
+ * In addition to basic RAVE, it uses criticality values as used in Pachi and 
+ * described in Petr Baudis's thesis on Pachi.
+ */
 public class UCTRAVE implements TreePolicy {
 
 	private int simsBeforeExpand;
@@ -15,6 +22,10 @@ public class UCTRAVE implements TreePolicy {
 	}
 	
 	public Node getNode(Node node) {
+		if (shouldExpand(node))
+			node.expand();
+		else if (shouldAddChild(node))
+			node.addNextChild();
 		if (node.isLeaf) return node;
 		
 		Node argmax = null;
@@ -78,7 +89,12 @@ public class UCTRAVE implements TreePolicy {
 	}
 
 	public boolean shouldExpand(Node node) {
-		if (node.sims >= simsBeforeExpand) return true;
+		if (node.legalMoves.size() == 0 && node.sims >= simsBeforeExpand) return true;
+		return false;
+	}
+	
+	public boolean shouldAddChild(Node node) {
+		if (node.legalMoves.size() > 0 && node.sims >= node.simsBeforeNextChild) return true;
 		return false;
 	}
 }

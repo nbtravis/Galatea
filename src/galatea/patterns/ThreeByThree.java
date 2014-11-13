@@ -7,6 +7,9 @@ import galatea.board.Board;
 import galatea.board.Color;
 import galatea.board.Point;
 
+/**
+ * 3 x 3 patterns of stones 
+ */
 public class ThreeByThree implements Comparable<ThreeByThree> {
 	
 	public Color[][] pattern = new Color[3][3];

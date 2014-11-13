@@ -3,17 +3,30 @@ package galatea.engine;
 import galatea.board.Board;
 import galatea.board.Color;
 import galatea.board.Point;
+import galatea.simpolicy.SimFeatures;
 import galatea.util.DeepCopy;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * A node in the MCTS GameTree. Holds information about winrates, RAVE
+ * winrates, criticality values (see UCTRAVE), the parent node, children
+ * nodes, and the corresponding board position. 
+ */
 public class Node {
 	
 	protected Board board;
 	public Point recentPoint;
+	
+	// Sorted list of MoveScore's
+	public List<Move> legalMoves = new ArrayList<>();
+	private int moveIndex = 0;
+	public double simsBeforeNextChild = 0;
+	
 	public int[][][][] criticalityCounts;
 	public boolean isRoot = false;
 	public boolean isLeaf = true;
@@ -35,31 +48,50 @@ public class Node {
 		visitedBoards = new HashSet<Integer>();
 	}
 	
-	public Node(Node parent, Color color, Point point) {
+	public Node(Node parent, Color color, Move move) {
 		this.parent = parent;
 		turn = parent.turn.opposite();
 		this.board = (Board) DeepCopy.copy(parent.board);
-		recentPoint = point;
+		recentPoint = move.point;
 		criticalityCounts = new int[board.board.length][board.board.length][3][2];
 		visitedBoards = parent.visitedBoards;
-		this.board.addStone(color, point, true);
+		this.board.addStone(color, move.point);
+		// Update information on previous move from move.simFeatures
+		this.board.prevAtariedChains = move.simFeatures.prevAtariedChains;
+		this.board.prevTwoLibbedChains = move.simFeatures.prevTwoLibbedChains;
 	}
 	
-	protected void expand() {
-		for (Point emptyPoint: board.emptyPoints) {
-			if (emptyPoint != null && board.isLegal(turn, emptyPoint)) {
-				Node child = new Node(this, turn, emptyPoint);
-				if (!visitedBoards.contains(child.board.zobristHash)) {
-					children.add(child);
-					visitedBoards.add(child.board.zobristHash);
-				}
-			}
+	// Create list of moves sorted by elo for progressive widening, then add the top 10
+	public void expand() {
+		for (Point move: board.getLegalMoves()) {
+			SimFeatures simFeatures = board.addStoneFast(board.turn, move);
+			legalMoves.add(new Move(move, simFeatures));
 		}
-		if (children.size() > 0)
-			isLeaf = false;
+		Collections.sort(legalMoves);
+		moveIndex = legalMoves.size()-1;
+		for (int i = 0; i < 1; i++) {
+			addNextChild();
+		}
 	}
 	
-	// TODO: make AMAF more intelligent
+	/**
+	 * TODO: Heavily test the parameters for updating simsBeforeNextChild.
+	 */
+	public void addNextChild() {
+		boolean added = false;
+		while (moveIndex >= 0 && !added) {
+			Node child = new Node(this, turn, legalMoves.get(moveIndex));
+			if (!visitedBoards.contains(child.board.zobristHash)) {
+				children.add(child);
+				visitedBoards.add(child.board.zobristHash);
+				added = true;
+				isLeaf = false;
+			}
+			moveIndex--;
+		}
+		simsBeforeNextChild += 20*Math.pow(1.2, children.size()-1);
+	}
+	
 	protected void update(Color winner, Board finalBoard, boolean[][][] moves) {
 		sims++; 
 		if (winner != turn)

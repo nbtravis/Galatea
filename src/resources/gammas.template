@@ -1,0 +1,48 @@
+Dist to prev move = 0
+Dist to prev move = 1
+Dist to prev move = 2
+Dist to prev move = 3
+Dist to prev move = 4
+Dist to prev move = 5
+Dist to prev move = 6
+Dist to prev move = 7
+Dist to prev move = 8
+Dist to prev move >= 9
+Dist to 2 moves ago = 0
+Dist to 2 moves ago = 1
+Dist to 2 moves ago = 2
+Dist to 2 moves ago = 3
+Dist to 2 moves ago = 4
+Dist to 2 moves ago = 5
+Dist to 2 moves ago = 6
+Dist to 2 moves ago = 7
+Dist to 2 moves ago = 8
+Dist to 2 moves ago >= 9
+Dist to edge of board = 0
+Dist to edge of board = 1
+Dist to edge of board = 2
+Dist to edge of board = 3
+Dist to edge of board = 4
+Dist to edge of board = 5
+Dist to edge of board = 6
+Dist to edge of board = 7
+Dist to edge of board = 8
+Dist to edge of board >= 9
+!(ko && atari)
+ko && atari
+!atariWhenTwoLibs
+atariWhenTwoLibs
+!atari
+atari
+!selfAtari
+selfAtari
+!extensionWhenAtari
+extensionWhenAtari
+!extensionWhenAtari2
+extensionWhenAtari2
+!captureWhenAtari
+captureWhenAtari
+!(chainRemoved && ko)
+chainRemoved && ko
+!chainRemoved
+chainRemoved

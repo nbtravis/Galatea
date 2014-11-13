@@ -5,6 +5,7 @@ import galatea.board.Color;
 import galatea.board.Point;
 import galatea.engine.GameTree;
 import galatea.engine.MCTS;
+import galatea.engine.ParallelMCTS;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -12,12 +13,17 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 
+/**
+ * Currently implements enough of the GTP to be able to play Galatea using
+ * gogui.
+ */
 public class GTP {
 	
 	private int boardsize = -1, handicap = 0;
 	private double komi = 6.5;
-	private MCTS engine = null;
+	private ParallelMCTS engine = null;
 	private List<String> knownCommands = Arrays.asList(new String[] {
 		"protocol_version", "name", "version", "known_command",
 		"list_commands", "boardsize", "clear_board", "komi", "quit",
@@ -28,6 +34,10 @@ public class GTP {
 	public GTP() {
 	}
 	
+	/**
+	 * Converts points from the "number number" format I use (defined in   
+	 * Point.java) the "letter number" format used by the GTP. 
+	 */
 	private String pointToVertex(Point p) {
 		String vertex = "";
 		int x = p.x, y = p.y;
@@ -42,6 +52,10 @@ public class GTP {
 		return vertex.toUpperCase();
 	}
 	
+	/**
+	 * Converts points from the "letter number" format used in the GTP 
+	 * to the "number number" format I use (defined in Point.java).
+	 */
 	private Point vertexToPoint(String vertex) {
 		vertex = vertex.toLowerCase();
 		if (vertex.equals("pass")) return null;
@@ -55,7 +69,10 @@ public class GTP {
 		return new Point(x, y);
 	}
 	
-	private void doCommand(String id, String command, List<String> arguments) throws InterruptedException {
+	/**
+	 * Processes a single GTP command 
+	 */
+	private void doCommand(String id, String command, List<String> arguments) throws InterruptedException, ExecutionException {
 		if (command.equals("protocol_version")) {
 			System.out.println(id + 3 + "\n");
 			
@@ -83,18 +100,18 @@ public class GTP {
 		} else if (command.equals("boardsize")) {
 			boardsize = Integer.parseInt(arguments.get(0));
 			if (handicap >= 0 && komi > -.5) {
-				engine = new MCTS(new Board(boardsize, handicap, komi));
+				engine = new ParallelMCTS(new Board(boardsize, handicap, komi));
 			}
 			System.out.println(id + "\n");
 			
 		} else if (command.equals("clear_board")) {
-			engine = new MCTS(new Board(boardsize, handicap, komi));
+			engine = new ParallelMCTS(new Board(boardsize, handicap, komi));
 			System.out.println(id + "\n");
 			
 		} else if (command.equals("komi")) {
 			komi = Double.parseDouble(arguments.get(0));
 			if (boardsize >= 0 && handicap >= 0) {
-				engine = new MCTS(new Board(boardsize, handicap, komi));
+				engine = new ParallelMCTS(new Board(boardsize, handicap, komi));
 			}
 			System.out.println(id + "\n");
 			
@@ -102,7 +119,7 @@ public class GTP {
 		} else if (command.equals("fixed_handicap")) {
 			handicap = Integer.parseInt(arguments.get(0));
 			if (boardsize >= 0 && komi > -.5) {
-				engine = new MCTS(new Board(boardsize, handicap, komi));
+				engine = new ParallelMCTS(new Board(boardsize, handicap, komi));
 			}
 			List<Point> points = Board.getHandicapPoints(boardsize, handicap);
 			System.out.print(id);
@@ -119,11 +136,7 @@ public class GTP {
 			Point point = vertexToPoint(arguments.get(1));
 
 			// Update gameTree
-			boolean b = engine.updateGameTree(point, color.opposite());
-			if (!b) {
-				engine.board.addStone(color, point, true);
-				engine.gameTree = new GameTree(engine.board, engine.board.turn);
-			}
+			engine.board.addStone(color, point);
 			System.out.println(id + "\n");
 		
 		} else if (command.equals("genmove")) {
@@ -133,13 +146,9 @@ public class GTP {
 			else
 				color = Color.BLACK;
 			
-			// Get move from engine, then restart background thread
-			Point point = engine.getMove(color, 19);
-			boolean b = engine.updateGameTree(point, color.opposite());
-			if (!b) {
-				engine.board.addStone(color, point, true);
-				engine.gameTree = new GameTree(engine.board, engine.board.turn);
-			}
+			engine.gameTree = new GameTree(engine.board, engine.board.turn);
+			Point point = engine.getMove(color, 24);
+			engine.board.addStone(color, point);
 			
 			if (point != null)
 				System.out.println(id + pointToVertex(point) + "\n");
@@ -180,7 +189,7 @@ public class GTP {
 			
 			try {
 				gtp.doCommand(id, command, arguments);
-			} catch (InterruptedException e) {
+			} catch (InterruptedException | ExecutionException e) {
 				e.printStackTrace();
 			}
 		}

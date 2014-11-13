@@ -3,70 +3,98 @@ package galatea.board;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
 public class Chain implements Serializable {
 
-	private static final long serialVersionUID = 702293880815759451L;
+	// Chains are merged into a mainChain, which holds the overall group
+	// information (this index is the index of the mainChain).
+	public int index;
+	public Chain mainChain;
 	
-	private int index;
 	public Color color;
-	protected List<Point> points = new ArrayList<Point>();
+	public List<Point> points = new ArrayList<Point>();
 	
-	// Use a fixed size array of liberties since we usually only care about 
-	// liberties when there aren't many of them
-	private Point[] liberties = new Point[10];
+	private boolean upToDate = false;
+	
+	public List<Chain> mergedChains = new ArrayList<Chain>();
+
 	public int numLiberties;
 	
-	public Chain(int index, Color color, Point initialPoint) {
+	public int numLiberties() {
+		return mainChain.numLiberties;
+	}
+	
+	/**
+	 * Only a mainChain will ever be merged, and it will only be merged with
+	 * another mainChain.
+	 */
+	public void merge(Chain other) {
+		other.mainChain = this;
+		other.index = index;
+		for (Chain merged: other.mergedChains) {
+			mergedChains.add(merged);
+			merged.mainChain = mainChain;
+			merged.index = index;
+		}
+		numLiberties = Math.max(mainChain.numLiberties, other.numLiberties);
+		upToDate = false;
+	}
+	
+	public void addPoint(Point point, int newLiberties) {
+		numLiberties += newLiberties-1;
+		points.add(point);
+	}
+	
+	public void calculateLiberties(Board board) {
+		if (upToDate) return;
+		
+		boolean[][] used = new boolean[board.size][board.size];
+
+		int count = 0;
+		for (Chain chain: mergedChains) {
+			for (Point p1: chain.points) {
+				int x = p1.x, y = p1.y;
+				if (x > 0 && board.board[x-1][y] == Color.EMPTY) {
+					if (!used[x-1][y]) {
+						used[x-1][y] = true;
+						count++;
+					}
+				}
+				if (x < board.size-1 && board.board[x+1][y] == Color.EMPTY) {
+					if (!used[x+1][y]) {
+						used[x+1][y] = true;
+						count++;
+					}
+				}
+				if (y > 0 && board.board[x][y-1] == Color.EMPTY) {
+					if (!used[x][y-1]) {
+						used[x][y-1] = true;
+						count++;
+					}
+				} 
+				if (y < board.size-1 && board.board[x][y+1] == Color.EMPTY) {
+					if (!used[x][y+1]) {
+						used[x][y+1] = true;
+						count++;
+					}
+				}
+			}
+		}
+		numLiberties = count;
+		upToDate = true;
+	}
+	
+	public Chain(int index, Color color, Point initialPoint, int numLiberties) {
 		this.index = index;
+		this.mainChain = this;
 		this.color = color;
 		points.add(initialPoint);
+		this.numLiberties = numLiberties;
+		mergedChains.add(this);
 	}
-	
-	public void calculateLiberties(Color[][] board) {
-		int i = 0;
-		Set<Point> seen = new HashSet<Point>();
-		for (Point p: points) {
-			Point p1 = new Point(p.x-1, p.y);
-			if (p.x > 0 && board[p.x-1][p.y] == Color.EMPTY && !seen.contains(p1)) { 
-				liberties[i] = p1;
-				i++;
-				if (i >= 10) break;
-				seen.add(p1);
-			}
-			p1 = new Point(p.x+1, p.y);
-			if (p.x < board.length-1 && board[p.x+1][p.y] == Color.EMPTY && !seen.contains(p1)) {
-				liberties[i] = p1;
-				i++;
-				if (i >= 10) break;
-				seen.add(p1);
-			}
-			p1 = new Point(p.x, p.y-1);
-			if (p.y > 0 && board[p.x][p.y-1] == Color.EMPTY && !seen.contains(p1)) {
-				liberties[i] = p1;
-				i++;
-				if (i >= 10) break;
-				seen.add(p1);
-			}
-			p1 = new Point(p.x, p.y+1);
-			if (p.y < board.length-1 && board[p.x][p.y+1] == Color.EMPTY && !seen.contains(p1)) {
-				liberties[i] = p1;
-				i++;
-				if (i >= 10) break;
-				seen.add(p1);
-			}
-		}
-		numLiberties = i;
-	}
-	
-	protected int countLiberties() {
-		int count = 0;
-		for (int i = 0; i < 10; i++) {
-			if (liberties[i] != null) 
-				count++;
-		}
-		return count;
-	}
+
+	private static final long serialVersionUID = 702293880815759451L;
 }

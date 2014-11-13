@@ -3,8 +3,9 @@ package galatea.simpolicy;
 import galatea.board.Board;
 import galatea.board.Color;
 import galatea.board.Point;
+import galatea.engine.Move;
 
 public interface SimPolicy {
 	
-	public Point getMove(Board board);
+	public Move getMove(Board board);
 }
