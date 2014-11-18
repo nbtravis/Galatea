@@ -69,7 +69,6 @@ public class SimFeatures implements Serializable {
 				patternGammas[i] = Double.parseDouble(line);
 				if (Double.isNaN(patternGammas[i]))
 					patternGammas[i] = 0;
-				if (Math.abs(patternGammas[i]) < 0.0000000001) System.out.println(line);
 				i++;
 			}
 		} catch (Exception e) {
